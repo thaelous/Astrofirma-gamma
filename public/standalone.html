@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AstroFirma Sonora Gamma - Receptor y Emisor Acústico Calibrado</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              900: '#312e81'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+  </style>
+</head>
+<body class="bg-[#040612] text-slate-100 min-h-screen flex flex-col items-center p-4 md:p-8 antialiased selection:bg-indigo-500/30 selection:text-indigo-200">
+
+  <!-- Header -->
+  <header class="w-full max-w-4xl flex flex-col md:flex-row items-center justify-between gap-4 pb-6 border-b border-slate-800/80 mb-8">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 text-white font-bold text-xl">
+        γ
+      </div>
+      <div>
+        <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+          AstroFirma Sonora Gamma
+          <span class="text-xs font-mono font-normal px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">Calibración 1600 Hz</span>
+        </h1>
+        <p class="text-xs text-slate-400">Transmisión y recepción acústica aérea con cuantización MIDI directa</p>
+      </div>
+    </div>
+
+    <!-- Mode Selector -->
+    <div class="flex bg-slate-900/90 border border-slate-800 p-1 rounded-xl gap-1">
+      <button id="tab-receiver" class="px-4 py-2 rounded-lg text-sm font-semibold transition-all bg-indigo-600 text-white shadow">
+        🎙️ Receptor (Micrófono)
+      </button>
+      <button id="tab-emitter" class="px-4 py-2 rounded-lg text-sm font-semibold transition-all text-slate-400 hover:text-white">
+        🔊 Emisor (Diapasón Puro)
+      </button>
+    </div>
+  </header>
+
+  <main class="w-full max-w-4xl space-y-6">
+
+    <!-- RECEPTOR SECTION -->
+    <section id="section-receiver" class="space-y-6">
+      
+      <!-- Control Bar -->
+      <div class="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-4">
+          <button id="btn-toggle-listen" class="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition-all flex items-center gap-2 shadow-lg shadow-emerald-600/20">
+            <span id="listen-icon">▶</span>
+            <span id="listen-label">Activar Receptor</span>
+          </button>
+          <button id="btn-clear-receiver" class="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition-all text-sm">
+            Limpiar
+          </button>
+        </div>
+
+        <!-- Live Metrics Badge -->
+        <div class="flex items-center gap-4 font-mono text-sm bg-slate-950/80 px-4 py-2 rounded-xl border border-slate-800">
+          <div>
+            <span class="text-xs text-slate-500 block uppercase">Frecuencia</span>
+            <span id="metric-freq" class="text-indigo-400 font-bold">--- Hz</span>
+          </div>
+          <div class="w-px h-6 bg-slate-800"></div>
+          <div>
+            <span class="text-xs text-slate-500 block uppercase">Nota MIDI</span>
+            <span id="metric-note" class="text-emerald-400 font-bold">--- (---)</span>
+          </div>
+          <div class="w-px h-6 bg-slate-800"></div>
+          <div>
+            <span class="text-xs text-slate-500 block uppercase">Desviación</span>
+            <span id="metric-cents" class="text-amber-400 font-bold">--- cents</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Oscilloscope Visualizer -->
+      <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 overflow-hidden relative">
+        <div class="flex justify-between items-center mb-2 px-1 text-xs text-slate-400 font-mono">
+          <span>OSCILOSCOPIO TRAS FILTRO PASA-BAJOS 1600 Hz</span>
+          <span id="status-indicator" class="text-slate-500 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-slate-600 inline-block"></span>
+            Inactivo
+          </span>
+        </div>
+        <canvas id="canvas-oscilloscope" class="w-full h-32 rounded-lg bg-slate-950/90 border border-slate-900"></canvas>
+      </div>
+
+      <!-- Decoded Output Card -->
+      <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-800/80 pb-3">
+          <h2 class="text-base font-semibold text-slate-200 flex items-center gap-2">
+            <span>Mensaje Reconstruido por el Aire</span>
+            <span id="decoded-count" class="text-xs font-mono bg-indigo-500/20 text-indigo-300 px-2.5 py-0.5 rounded-full font-bold">0/500 letras</span>
+          </h2>
+          <div class="flex items-center gap-2">
+            <button id="btn-copy-decoded" class="text-xs font-mono px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">Copiar</button>
+            <span class="text-xs font-mono text-slate-400">Gate: 40 ms</span>
+          </div>
+        </div>
+
+        <div id="decoded-display" class="min-h-[84px] max-h-56 overflow-y-auto bg-slate-950 border border-slate-800/90 rounded-xl p-4 text-xl sm:text-2xl font-mono tracking-wider text-emerald-400 font-bold select-all break-words leading-relaxed">
+          <span class="text-slate-600 text-sm font-sans font-normal italic">Esperando pulsos en el aire...</span>
+        </div>
+
+        <!-- History stream of letters -->
+        <div class="space-y-2">
+          <div class="flex justify-between items-center">
+            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Secuencia de Tonos Detectados</h3>
+            <span class="text-[11px] text-slate-500 font-mono">Tolerancia: ±0.45 semitonos</span>
+          </div>
+          <div id="letters-history" class="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-1">
+            <!-- Badges inserted here -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Technical Specifications Box -->
+      <div class="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-5 text-xs text-slate-400 space-y-2">
+        <div class="font-semibold text-slate-300 flex items-center gap-2">
+          <span class="text-indigo-400">⚡</span>
+          Parámetros de Calibración Antiartefactos Activos
+        </div>
+        <ul class="grid grid-cols-1 md:grid-cols-2 gap-2 list-disc list-inside text-slate-400">
+          <li><strong>Filtro Pasa-Bajos:</strong> BiquadFilterNode tipo 'lowpass' a 1600 Hz en la entrada del micrófono.</li>
+          <li><strong>Autocorrelación Robusta:</strong> Búfer de 2048 buscando el PRIMER pico fuerte (150 Hz - 1400 Hz).</li>
+          <li><strong>Tolerancia de Afinación:</strong> Descarte automático de muestras con desviación > ±0.45 semitonos.</li>
+          <li><strong>Gate de Silencio:</strong> Mínimo 40 ms continuos de silencio requerido entre notas para desbloquear.</li>
+        </ul>
+      </div>
+
+    </section>
+
+    <!-- EMISOR SECTION -->
+    <section id="section-emitter" class="space-y-6 hidden">
+      <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
+        <div>
+          <h2 class="text-lg font-semibold text-white mb-1">Emisor de Tonos Puros (Diapasón)</h2>
+          <p class="text-xs text-slate-400">Soporta textos largos de hasta 500 caracteres sin colapso matemático ni saturación de audio. Onda senoidal pura ('sine') con silencios de 90 ms entre notas.</p>
+        </div>
+
+        <div class="space-y-2">
+          <div class="flex justify-between items-center">
+            <label class="text-xs font-semibold text-slate-300 uppercase tracking-wider block">Texto o Mensaje a Transmitir</label>
+            <span id="char-counter" class="text-xs font-mono px-2.5 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-500/30 text-indigo-300">10/500</span>
+          </div>
+          <div class="flex flex-col sm:flex-row gap-2.5 items-stretch">
+            <textarea id="word-input" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" maxlength="500" rows="2" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 font-mono text-sm sm:text-base text-indigo-300 uppercase tracking-wider focus:outline-none focus:border-indigo-500 transition-colors resize-none leading-relaxed" placeholder="Ingresa texto largo (hasta 500 caracteres, ej: MAÑANA EN EL ESPACIO)...">ASTROFIRMA</textarea>
+            <button id="btn-play-sequence" class="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2 shrink-0 sm:self-center">
+              <span id="play-icon">▶</span>
+              <span id="play-label">Transmitir</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Curva Matemática por Spline Cúbico -->
+        <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-4 space-y-2">
+          <div class="flex justify-between items-center text-xs font-mono text-slate-400">
+            <span class="flex items-center gap-1.5 text-indigo-300 font-semibold">
+              <span>📈</span>
+              <span>Interpolación por Spline Cúbico (Piecewise C¹ Smooth)</span>
+            </span>
+            <span id="spline-info" class="text-slate-500">10 puntos • Sin fenómeno de Runge</span>
+          </div>
+          <canvas id="canvas-spline" class="w-full h-36 rounded-lg bg-[#040612] border border-slate-900"></canvas>
+        </div>
+
+        <!-- Progress Ribbon -->
+        <div class="space-y-2">
+          <div class="flex justify-between text-xs text-slate-400">
+            <span>Cinta de Transmisión Acústica</span>
+            <span id="emitter-speed-label">Velocidad: 110 BPM (455 ms tono + 90 ms silencio)</span>
+          </div>
+          <div id="emitter-ribbon" class="flex gap-2 p-2 bg-slate-950 rounded-xl border border-slate-800 min-h-[64px] items-center overflow-x-auto">
+            <!-- Letter cards populated by JS -->
+          </div>
+        </div>
+
+        <!-- BPM Slider -->
+        <div class="flex items-center gap-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800/80">
+          <span class="text-xs font-mono text-slate-400 w-24">Tempo (BPM):</span>
+          <input id="slider-bpm" type="range" min="60" max="160" value="110" class="flex-1 accent-indigo-500">
+          <span id="bpm-val" class="font-mono text-sm text-indigo-400 font-bold w-12 text-right">110</span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // --- MODE TABS ---
+    const tabReceiver = document.getElementById('tab-receiver');
+    const tabEmitter = document.getElementById('tab-emitter');
+    const secReceiver = document.getElementById('section-receiver');
+    const secEmitter = document.getElementById('section-emitter');
+
+    tabReceiver.addEventListener('click', () => {
+      tabReceiver.className = 'px-4 py-2 rounded-lg text-sm font-semibold transition-all bg-indigo-600 text-white shadow';
+      tabEmitter.className = 'px-4 py-2 rounded-lg text-sm font-semibold transition-all text-slate-400 hover:text-white';
+      secReceiver.classList.remove('hidden');
+      secEmitter.classList.add('hidden');
+    });
+
+    tabEmitter.addEventListener('click', () => {
+      tabEmitter.className = 'px-4 py-2 rounded-lg text-sm font-semibold transition-all bg-indigo-600 text-white shadow';
+      tabReceiver.className = 'px-4 py-2 rounded-lg text-sm font-semibold transition-all text-slate-400 hover:text-white';
+      secEmitter.classList.remove('hidden');
+      secReceiver.classList.add('hidden');
+    });
+
+    // --- RECEPTOR AUDIO GRAPH & AUTOCORRELATION ---
+    let recAudioCtx = null;
+    let recStream = null;
+    let recAnalyser = null;
+    let recAnimId = null;
+    let isListening = false;
+
+    const btnToggleListen = document.getElementById('btn-toggle-listen');
+    const btnClearReceiver = document.getElementById('btn-clear-receiver');
+    const metricFreq = document.getElementById('metric-freq');
+    const metricNote = document.getElementById('metric-note');
+    const metricCents = document.getElementById('metric-cents');
+    const decodedDisplay = document.getElementById('decoded-display');
+    const decodedCount = document.getElementById('decoded-count');
+    const lettersHistory = document.getElementById('letters-history');
+    const statusIndicator = document.getElementById('status-indicator');
+    const canvas = document.getElementById('canvas-oscilloscope');
+    const canvasCtx = canvas.getContext('2d');
+
+    let decodedString = '';
+    const decodedItems = [];
+
+    // Note Names array
+    const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    function midiToNoteName(midi) {
+      const note = NOTE_NAMES[midi % 12];
+      const octave = Math.floor(midi / 12) - 1;
+      return `${note}${octave}`;
+    }
+
+    // Mapeo Acústico Estandarizado Bidireccional
+    function midiFromChar(char) {
+      if (char === ' ') return 60; // Espacio dedicado C4 (~261.63 Hz, limpio y audible)
+      if (char === 'Ñ' || char === 'ñ') return 91; // Ñ dedicada D#6 (~1244.51 Hz, en banda segura)
+      const code = char.toUpperCase().charCodeAt(0);
+      if (code >= 65 && code <= 90) return code; // A-Z (MIDI 65-90)
+      if (code >= 48 && code <= 57) return code; // 0-9 (MIDI 48-57)
+      return 60;
+    }
+
+    function charFromMidi(midi) {
+      if (midi === 60 || midi === 32) return ' ';
+      if (midi === 91 || midi === 92) return 'Ñ';
+      if (midi >= 65 && midi <= 90) return String.fromCharCode(midi);
+      if (midi >= 48 && midi <= 57) return String.fromCharCode(midi);
+      return String.fromCharCode(midi);
+    }
+
+    function isValidAppMidi(midi) {
+      return (midi >= 65 && midi <= 90) ||
+             (midi >= 97 && midi <= 122) ||
+             midi === 60 ||
+             midi === 32 ||
+             midi === 91 ||
+             midi === 92 ||
+             (midi >= 48 && midi <= 57);
+    }
+
+    // Tracking state con máquina de estados del Gate de Silencio
+    const tracking = {
+      gateState: 'ESPERA_NOTA', // 'ESPERA_NOTA' | 'CONFIRMANDO_NOTA' | 'ESPERA_SILENCIO'
+      candidateMidi: null,
+      candidateFreq: 0,
+      consecutiveFrames: 0,
+      silenceStartTime: 0,
+      silenceRequiredMs: 50,   // Exige 50 ms continuos de silencio (en rango 40-60 ms) para desbloquear notas repetidas
+      noiseThreshold: 0.022    // Umbral de volumen RMS
+    };
+
+    /**
+     * 2. Algoritmo de Autocorrelación Normalizada Robusto
+     * Busca el PRIMER pico fuerte en el dominio del tiempo (evitando saltos de octava o falsos dobles).
+     * Búfer de 2048 y lags entre 150 Hz y 1400 Hz.
+     */
+    function detectPitch(buffer, sampleRate, threshold = 0.020) {
+      const bufferLength = buffer.length; // 2048
+
+      // RMS
+      let sumSquares = 0;
+      for (let i = 0; i < bufferLength; i++) {
+        sumSquares += buffer[i] * buffer[i];
+      }
+      const rms = Math.sqrt(sumSquares / bufferLength);
+      if (rms < threshold) {
+        return { freq: null, rms, clarity: 0 };
+      }
+
+      const minLag = Math.floor(sampleRate / 1400);
+      const maxLag = Math.ceil(sampleRate / 150);
+      if (maxLag >= bufferLength) return { freq: null, rms, clarity: 0 };
+
+      const windowLength = bufferLength - maxLag;
+      let r0 = 0;
+      for (let i = 0; i < windowLength; i++) {
+        r0 += buffer[i] * buffer[i];
+      }
+      if (r0 <= 0.00001) return { freq: null, rms, clarity: 0 };
+
+      const corrValues = new Float32Array(maxLag + 2);
+      for (let lag = minLag; lag <= maxLag; lag++) {
+        let rLag = 0;
+        for (let i = 0; i < windowLength; i++) {
+          rLag += buffer[i] * buffer[i + lag];
+        }
+        corrValues[lag] = rLag / r0;
+      }
+
+      // Buscar el PRIMER pico fuerte en el dominio del tiempo
+      let bestLag = -1;
+      let bestCorr = 0;
+      let hasDropped = false;
+
+      for (let lag = minLag + 1; lag < maxLag; lag++) {
+        const c = corrValues[lag];
+        const prevC = corrValues[lag - 1];
+        const nextC = corrValues[lag + 1];
+
+        if (c < 0.60) hasDropped = true;
+
+        if (hasDropped && c > prevC && c >= nextC && c >= 0.65) {
+          bestLag = lag;
+          bestCorr = c;
+          break; // Detener en el PRIMER pico fuerte
+        }
+      }
+
+      if (bestLag <= 0) {
+        let dropped = false;
+        for (let lag = minLag + 1; lag < maxLag; lag++) {
+          const c = corrValues[lag];
+          const prevC = corrValues[lag - 1];
+          const nextC = corrValues[lag + 1];
+          if (c < 0.50) dropped = true;
+          if (dropped && c > prevC && c >= nextC && c >= 0.52) {
+            bestLag = lag;
+            bestCorr = c;
+            break;
+          }
+        }
+      }
+
+      if (bestLag <= 0 || bestCorr < 0.52) {
+        return { freq: null, rms, clarity: bestCorr };
+      }
+
+      // Interpolación parabólica
+      const y1 = corrValues[bestLag - 1] || bestCorr;
+      const y2 = corrValues[bestLag];
+      const y3 = corrValues[bestLag + 1] || bestCorr;
+      const denom = 2 * (2 * y2 - y1 - y3);
+      let delta = 0;
+      if (Math.abs(denom) > 0.000001) {
+        delta = (y3 - y1) / denom;
+      }
+      const refinedLag = bestLag + delta;
+      const fundamentalFreq = sampleRate / refinedLag;
+
+      if (fundamentalFreq < 150 || fundamentalFreq > 1400) {
+        return { freq: null, rms, clarity: 0 };
+      }
+
+      return { freq: fundamentalFreq, rms, clarity: bestCorr };
+    }
+
+    // Register a valid letter into the interface
+    function registerLetter(midiValue, freq, centsOff) {
+      if (midiValue < 32 || midiValue > 126) return;
+
+      // Traduce mediante tabla acústica calibrada
+      const char = charFromMidi(midiValue);
+      const noteName = midiToNoteName(midiValue);
+
+      decodedString += char;
+      decodedDisplay.innerText = decodedString;
+      decodedCount.innerText = `${decodedString.length}/500 letras`;
+
+      // Regla de Remate Acústico: 3 espacios consecutivos al final
+      if (decodedString.endsWith('   ')) {
+        statusIndicator.innerHTML = '<span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse inline-block"></span> <span class="text-cyan-300 font-bold">¡Firma Rematada (3 Espacios)!</span>';
+      }
+
+      // Add badge to stream
+      const badge = document.createElement('div');
+      badge.className = `px-3 py-1.5 rounded-lg border font-mono text-xs flex items-center gap-2 animate-fadeIn ${
+        char === ' ' ? 'bg-amber-950/70 border-amber-500/50 text-amber-200' : (char === 'Ñ' ? 'bg-purple-950/70 border-purple-500/50 text-purple-200' : 'bg-indigo-950/80 border-indigo-700/60')
+      }`;
+      badge.innerHTML = `
+        <span class="text-base font-bold ${char === ' ' ? 'text-amber-300' : 'text-white'}">${char === ' ' ? '␣' : char}</span>
+        <span class="text-indigo-300">${noteName}</span>
+        <span class="text-[10px] text-slate-400">${freq.toFixed(1)}Hz</span>
+        <span class="text-[10px] ${Math.abs(centsOff) <= 20 ? 'text-emerald-400' : 'text-amber-400'}">${centsOff >= 0 ? '+' : ''}${centsOff.toFixed(0)}c</span>
+      `;
+      lettersHistory.appendChild(badge);
+      lettersHistory.scrollTop = lettersHistory.scrollHeight;
+    }
+
+    // Audio loop
+    function runAudioLoop() {
+      const bufferLength = recAnalyser.fftSize; // 2048
+      const buffer = new Float32Array(bufferLength);
+      let frame = 0;
+
+      function step() {
+        frame++;
+        recAnalyser.getFloatTimeDomainData(buffer);
+        const now = performance.now();
+
+        const { freq, rms, clarity } = detectPitch(buffer, recAudioCtx.sampleRate, tracking.noiseThreshold);
+
+        if (tracking.gateState === 'ESPERA_SILENCIO') {
+          // Tras confirmar una letra, BLOQUEO total hasta que el volumen caiga por debajo del umbral por 40 ms
+          if (rms < tracking.noiseThreshold || !freq) {
+            if (tracking.silenceStartTime === 0) {
+              tracking.silenceStartTime = now;
+            } else if (now - tracking.silenceStartTime >= tracking.silenceRequiredMs) {
+              // Silencio de 40 ms confirmado: listo para la siguiente nota
+              tracking.gateState = 'ESPERA_NOTA';
+              tracking.candidateMidi = null;
+              tracking.consecutiveFrames = 0;
+              tracking.silenceStartTime = 0;
+            }
+          } else {
+            tracking.silenceStartTime = 0;
+          }
+
+          if (frame % 4 === 0) {
+            metricFreq.innerText = freq ? `${freq.toFixed(1)} Hz` : '--- Hz';
+          }
+        } else {
+          // Estados ESPERA_NOTA o CONFIRMANDO_NOTA
+          if (freq && freq >= 150 && freq <= 1400 && clarity >= 0.55) {
+            tracking.silenceStartTime = 0;
+
+            const exactMidi = 69 + 12 * Math.log2(freq / 440);
+            const midiValue = Math.round(exactMidi);
+            const deviation = Math.abs(exactMidi - midiValue);
+
+            // Filtro de Rango Válido Estricto + desviación <= 0.45 semitonos
+            if (deviation <= 0.45 && isValidAppMidi(midiValue)) {
+              const centsOff = (exactMidi - midiValue) * 100;
+
+              if (frame % 2 === 0) {
+                metricFreq.innerText = `${freq.toFixed(1)} Hz`;
+                metricNote.innerText = `${midiToNoteName(midiValue)} (${midiValue})`;
+                metricCents.innerText = `${centsOff >= 0 ? '+' : ''}${centsOff.toFixed(0)} cents`;
+              }
+
+              if (tracking.candidateMidi === midiValue) {
+                tracking.consecutiveFrames++;
+                tracking.gateState = 'CONFIRMANDO_NOTA';
+
+                // Exigir al menos 3 cuadros consecutivos estables
+                if (tracking.consecutiveFrames >= 3) {
+                  registerLetter(midiValue, freq, centsOff);
+                  tracking.gateState = 'ESPERA_SILENCIO';
+                  tracking.silenceStartTime = 0;
+                  tracking.consecutiveFrames = 0;
+                  tracking.candidateMidi = null;
+                }
+              } else {
+                tracking.candidateMidi = midiValue;
+                tracking.candidateFreq = freq;
+                tracking.consecutiveFrames = 1;
+                tracking.gateState = 'CONFIRMANDO_NOTA';
+              }
+            } else {
+              tracking.candidateMidi = null;
+              tracking.consecutiveFrames = 0;
+              tracking.gateState = 'ESPERA_NOTA';
+            }
+          } else {
+            tracking.candidateMidi = null;
+            tracking.consecutiveFrames = 0;
+            tracking.gateState = 'ESPERA_NOTA';
+            if (frame % 4 === 0) {
+              metricFreq.innerText = '--- Hz';
+              metricNote.innerText = '--- (---)';
+              metricCents.innerText = '--- cents';
+            }
+          }
+        }
+
+        // Draw Oscilloscope
+        drawOscilloscope(buffer);
+
+        if (isListening) {
+          recAnimId = requestAnimationFrame(step);
+        }
+      }
+      step();
+    }
+
+    function drawOscilloscope(data) {
+      if (!canvas) return;
+      const width = canvas.width = canvas.clientWidth * window.devicePixelRatio;
+      const height = canvas.height = canvas.clientHeight * window.devicePixelRatio;
+      canvasCtx.clearRect(0, 0, width, height);
+
+      canvasCtx.lineWidth = 2 * window.devicePixelRatio;
+      canvasCtx.strokeStyle = '#6366f1';
+      canvasCtx.beginPath();
+
+      const sliceWidth = width / (data.length / 2);
+      let x = 0;
+      for (let i = 0; i < data.length / 2; i++) {
+        const v = data[i] * 3; // visual gain
+        const y = (height / 2) + v * (height / 2);
+        if (i === 0) canvasCtx.moveTo(x, y);
+        else canvasCtx.lineTo(x, y);
+        x += sliceWidth;
+      }
+      canvasCtx.stroke();
+    }
+
+    async function startListening() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+        });
+        recStream = stream;
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        recAudioCtx = new AudioCtx();
+        if (recAudioCtx.state === 'suspended') await recAudioCtx.resume();
+
+        const source = recAudioCtx.createMediaStreamSource(stream);
+
+        // 1. Filtro Pasa-Bajos en la Entrada del Micrófono (Antiartefactos):
+        const micFilter = recAudioCtx.createBiquadFilter();
+        micFilter.type = 'lowpass';
+        micFilter.frequency.value = 1600;
+
+        // Pasa-altos suave a 120 Hz
+        const highpass = recAudioCtx.createBiquadFilter();
+        highpass.type = 'highpass';
+        highpass.frequency.value = 120;
+
+        const analyser = recAudioCtx.createAnalyser();
+        analyser.fftSize = 2048; // Buffer de 2048
+        analyser.smoothingTimeConstant = 0.05;
+        recAnalyser = analyser;
+
+        source.connect(highpass);
+        highpass.connect(micFilter);
+        micFilter.connect(analyser);
+
+        isListening = true;
+        btnToggleListen.className = 'px-6 py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold transition-all flex items-center gap-2 shadow-lg shadow-red-600/20';
+        document.getElementById('listen-icon').innerText = '⏹';
+        document.getElementById('listen-label').innerText = 'Detener Receptor';
+        statusIndicator.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block"></span> <span class="text-emerald-400 font-bold">Escuchando</span>';
+
+        runAudioLoop();
+      } catch (err) {
+        alert('Error al acceder al micrófono: ' + err.message);
+      }
+    }
+
+    function stopListening() {
+      isListening = false;
+      if (recAnimId) cancelAnimationFrame(recAnimId);
+      if (recStream) recStream.getTracks().forEach(t => t.stop());
+      if (recAudioCtx) recAudioCtx.close().catch(() => {});
+      btnToggleListen.className = 'px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition-all flex items-center gap-2 shadow-lg shadow-emerald-600/20';
+      document.getElementById('listen-icon').innerText = '▶';
+      document.getElementById('listen-label').innerText = 'Activar Receptor';
+      statusIndicator.innerHTML = '<span class="w-2 h-2 rounded-full bg-slate-600 inline-block"></span> Inactivo';
+    }
+
+    btnToggleListen.addEventListener('click', () => {
+      if (isListening) stopListening();
+      else startListening();
+    });
+
+    const btnCopyDecoded = document.getElementById('btn-copy-decoded');
+    const charCounter = document.getElementById('char-counter');
+    const splineInfo = document.getElementById('spline-info');
+    const canvasSpline = document.getElementById('canvas-spline');
+    const ctxSpline = canvasSpline ? canvasSpline.getContext('2d') : null;
+
+    let activeOsc = null;
+
+    if (btnCopyDecoded) {
+      btnCopyDecoded.addEventListener('click', () => {
+        if (decodedString) {
+          navigator.clipboard.writeText(decodedString).then(() => {
+            btnCopyDecoded.innerText = '¡Copiado!';
+            setTimeout(() => { btnCopyDecoded.innerText = 'Copiar'; }, 1500);
+          }).catch(() => {});
+        }
+      });
+    }
+
+    btnClearReceiver.addEventListener('click', () => {
+      decodedString = '';
+      decodedDisplay.innerHTML = '<span class="text-slate-600 text-sm font-sans font-normal italic">Esperando pulsos en el aire...</span>';
+      decodedCount.innerText = '0/500 letras';
+      lettersHistory.innerHTML = '';
+      metricFreq.innerText = '--- Hz';
+      metricNote.innerText = '---';
+      metricCents.innerText = '---';
+    });
+
+    // --- EMISOR AUDIO ENGINE & SPLINE CANVASES ---
+    let emitterCtx = null;
+    let emitterPlaying = false;
+    let emitterTimer = null;
+    let currentStep = -1;
+
+    const inputWord = document.getElementById('word-input') || document.getElementById('input-word');
+    const inputField = inputWord; // Alias para máxima compatibilidad
+    const btnPlaySeq = document.getElementById('btn-play-sequence');
+    const emitterRibbon = document.getElementById('emitter-ribbon');
+    const sliderBpm = document.getElementById('slider-bpm');
+    const bpmVal = document.getElementById('bpm-val');
+    const emitterSpeedLabel = document.getElementById('emitter-speed-label');
+
+    function getTransmittedText() {
+      const raw = inputWord.value.toUpperCase();
+      if (!raw) return '';
+      // Regla de Remate Automático: Agrega automáticamente 3 espacios ("   ") al final sin recortar espacios que el usuario haya escrito
+      return raw + '   ';
+    }
+
+    function freqFromMidi(midi) {
+      return 440 * Math.pow(2, (midi - 69) / 12);
+    }
+
+    /**
+     * Interpolación por Spline Cúbico por Tramos (Catmull-Rom C¹)
+     * O(1) por evaluación, nunca diverge ni sufre del fenómeno de Runge.
+     */
+    function evaluateSpline(points, x) {
+      const n = points.length;
+      if (n === 0) return 0;
+      if (n === 1) return points[0].y;
+      if (x <= 0) return points[0].y;
+      if (x >= n - 1) return points[n - 1].y;
+
+      const i = Math.floor(x);
+      const t = x - i;
+
+      const p0 = i > 0 ? points[i - 1].y : points[0].y - (points[1].y - points[0].y);
+      const p1 = points[i].y;
+      const p2 = points[i + 1].y;
+      const p3 = i + 2 < n ? points[i + 2].y : points[n - 1].y + (points[n - 1].y - points[n - 2].y);
+
+      const t2 = t * t;
+      const t3 = t2 * t;
+
+      return 0.5 * (
+        (2 * p1) +
+        (-p0 + p2) * t +
+        (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
+        (-p0 + 3 * p1 - 3 * p2 + p3) * t3
+      );
+    }
+
+    /**
+     * Dibuja la curva en el canvas con compresión horizontal adaptativa
+     */
+    function drawSplineCanvas() {
+      if (!canvasSpline || !ctxSpline) return;
+      const rect = canvasSpline.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const w = Math.floor(rect.width);
+      const h = Math.floor(rect.height || 144);
+
+      if (canvasSpline.width !== w * dpr || canvasSpline.height !== h * dpr) {
+        canvasSpline.width = w * dpr;
+        canvasSpline.height = h * dpr;
+      }
+
+      ctxSpline.save();
+      ctxSpline.scale(dpr, dpr);
+      ctxSpline.clearRect(0, 0, w, h);
+
+      const text = getTransmittedText();
+      const n = text.length;
+
+      if (n === 0) {
+        ctxSpline.fillStyle = '#64748b';
+        ctxSpline.font = '12px monospace';
+        ctxSpline.textAlign = 'center';
+        ctxSpline.fillText('Ingresa texto para graficar la firma sonora', w / 2, h / 2);
+        ctxSpline.restore();
+        return;
+      }
+
+      const points = [];
+      let minY = 127;
+      let maxY = 0;
+      for (let i = 0; i < n; i++) {
+        const ch = text[i];
+        const midi = midiFromChar(ch);
+        points.push({ x: i, y: midi, char: ch });
+        if (midi < minY) minY = midi;
+        if (midi > maxY) maxY = midi;
+      }
+
+      const padX = 28;
+      const padY = 22;
+      const plotW = Math.max(10, w - padX * 2);
+      const plotH = Math.max(10, h - padY * 2);
+
+      const yRange = Math.max(12, maxY - minY);
+      const domainYMin = minY - yRange * 0.15;
+      const domainYMax = maxY + yRange * 0.15;
+
+      const toScreenX = (x) => n === 1 ? w / 2 : padX + (x / (n - 1)) * plotW;
+      const toScreenY = (y) => h - padY - ((y - domainYMin) / (domainYMax - domainYMin)) * plotH;
+
+      // Dibujar cuadrícula sutil
+      ctxSpline.strokeStyle = 'rgba(99, 102, 241, 0.1)';
+      ctxSpline.lineWidth = 1;
+      for (let g = 0; g <= 4; g++) {
+        const gy = padY + (g / 4) * plotH;
+        ctxSpline.beginPath();
+        ctxSpline.moveTo(padX, gy);
+        ctxSpline.lineTo(w - padX, gy);
+        ctxSpline.stroke();
+      }
+
+      // Evaluar spline muestreado
+      if (n > 1) {
+        const samples = Math.min(600, Math.max(80, plotW));
+        ctxSpline.beginPath();
+
+        for (let s = 0; s <= samples; s++) {
+          const t = (s / samples) * (n - 1);
+          const valY = evaluateSpline(points, t);
+          const sx = toScreenX(t);
+          const sy = toScreenY(valY);
+          if (s === 0) ctxSpline.moveTo(sx, sy);
+          else ctxSpline.lineTo(sx, sy);
+        }
+
+        // Relleno degradado inferior
+        ctxSpline.save();
+        const grad = ctxSpline.createLinearGradient(0, padY, 0, h - padY);
+        grad.addColorStop(0, 'rgba(6, 182, 212, 0.25)');
+        grad.addColorStop(1, 'rgba(99, 102, 241, 0.02)');
+        ctxSpline.fillStyle = grad;
+        ctxSpline.lineTo(toScreenX(n - 1), h - padY);
+        ctxSpline.lineTo(toScreenX(0), h - padY);
+        ctxSpline.closePath();
+        ctxSpline.fill();
+        ctxSpline.restore();
+
+        // Trazo de la curva
+        ctxSpline.strokeStyle = '#38bdf8';
+        ctxSpline.lineWidth = 2;
+        ctxSpline.shadowColor = 'rgba(56, 189, 248, 0.6)';
+        ctxSpline.shadowBlur = 6;
+        ctxSpline.stroke();
+        ctxSpline.shadowBlur = 0;
+      }
+
+      // Dibujar nodos / puntos con compresión adaptativa
+      const showAllDots = n <= 80;
+      const step = n <= 30 ? 1 : (n <= 100 ? 2 : (n <= 250 ? 5 : 10));
+
+      for (let i = 0; i < n; i++) {
+        const isCurrent = i === currentStep;
+        const pt = points[i];
+        const sx = toScreenX(i);
+        const sy = toScreenY(pt.y);
+
+        if (showAllDots || i % step === 0 || isCurrent) {
+          ctxSpline.beginPath();
+          const r = isCurrent ? 5 : (n > 100 ? 1.5 : (n > 40 ? 2.5 : 3.5));
+          ctxSpline.arc(sx, sy, r, 0, Math.PI * 2);
+          ctxSpline.fillStyle = isCurrent ? '#f43f5e' : (pt.char === ' ' ? '#f59e0b' : (pt.char === 'Ñ' ? '#c084fc' : (n > 100 ? '#818cf8' : '#38bdf8')));
+          ctxSpline.fill();
+          if (isCurrent) {
+            ctxSpline.strokeStyle = '#ffffff';
+            ctxSpline.lineWidth = 1.5;
+            ctxSpline.stroke();
+          }
+        }
+      }
+
+      // Línea de escaneo vertical durante reproducción
+      if (currentStep >= 0 && currentStep < n) {
+        const curX = toScreenX(currentStep);
+        ctxSpline.strokeStyle = 'rgba(244, 63, 94, 0.7)';
+        ctxSpline.lineWidth = 1.5;
+        ctxSpline.setLineDash([3, 3]);
+        ctxSpline.beginPath();
+        ctxSpline.moveTo(curX, padY);
+        ctxSpline.lineTo(curX, h - padY);
+        ctxSpline.stroke();
+        ctxSpline.setLineDash([]);
+      }
+
+      ctxSpline.restore();
+    }
+
+    function updateRibbon() {
+      const raw = inputWord.value.toUpperCase();
+      charCounter.innerText = `${raw.length}/500`;
+      
+      const text = getTransmittedText();
+      splineInfo.innerText = `${text.length} tonos (${raw.length} texto + 3 espacios de remate)`;
+
+      emitterRibbon.innerHTML = '';
+      const maxCards = Math.min(text.length, 50); // Mostrar primeras 50 en DOM ligero
+      for (let i = 0; i < maxCards; i++) {
+        const ch = text[i];
+        const m = midiFromChar(ch);
+        const f = freqFromMidi(m);
+        const isSpace = ch === ' ';
+        const isEnne = ch === 'Ñ';
+        
+        const card = document.createElement('div');
+        card.id = `ribbon-card-${i}`;
+        card.className = `px-3 py-2 rounded-xl border text-center font-mono min-w-[52px] shrink-0 transition-all ${
+          isSpace
+            ? 'bg-amber-950/40 border-amber-500/30'
+            : (isEnne ? 'bg-purple-950/40 border-purple-500/30' : 'bg-slate-900 border-slate-800')
+        }`;
+        card.innerHTML = `
+          <div class="text-base font-bold ${isSpace ? 'text-amber-300' : (isEnne ? 'text-purple-300' : 'text-white')}">${isSpace ? '␣' : ch}</div>
+          <div class="text-[10px] ${isSpace ? 'text-amber-400' : 'text-indigo-400'}">${midiToNoteName(m)}</div>
+          <div class="text-[9px] text-slate-500">${f.toFixed(0)}Hz</div>
+        `;
+        emitterRibbon.appendChild(card);
+      }
+      if (text.length > 50) {
+        const moreTag = document.createElement('div');
+        moreTag.className = 'px-3 py-2 rounded-xl bg-slate-950 border border-indigo-500/30 text-indigo-400 font-mono text-xs shrink-0';
+        moreTag.innerText = `+${text.length - 50} más`;
+        emitterRibbon.appendChild(moreTag);
+      }
+
+      drawSplineCanvas();
+    }
+
+    inputWord.addEventListener('input', updateRibbon);
+    window.addEventListener('resize', drawSplineCanvas);
+    updateRibbon();
+
+    sliderBpm.addEventListener('input', (e) => {
+      bpmVal.innerText = e.target.value;
+      const bpm = parseInt(e.target.value, 10);
+      const stepMs = Math.round((60 / bpm) * 1000);
+      const noteMs = Math.max(80, stepMs - 90);
+      emitterSpeedLabel.innerText = `Velocidad: ${bpm} BPM (${noteMs} ms tono + 90 ms silencio)`;
+    });
+
+    /**
+     * Emisión Limpia y Estandarizada
+     * Onda senoidal pura ('sine'), sin efectos, corte suave sin clics
+     */
+    function playPureDiapasonTone(frequency, duration) {
+      if (!emitterCtx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        emitterCtx = new AudioCtx();
+      }
+      if (emitterCtx.state === 'suspended') emitterCtx.resume();
+
+      const now = emitterCtx.currentTime;
+      const osc = emitterCtx.createOscillator();
+      const gain = emitterCtx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(frequency, now);
+
+      const attack = 0.008;
+      const release = 0.012;
+      const sustain = Math.max(0.04, duration - release);
+
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.85, now + attack);
+      gain.gain.setValueAtTime(0.85, now + sustain);
+      gain.gain.linearRampToValueAtTime(0.0001, now + duration);
+
+      osc.connect(gain);
+      gain.connect(emitterCtx.destination);
+
+      osc.start(now);
+      osc.stop(now + duration + 0.01);
+      activeOsc = osc;
+    }
+
+    function runEmitterStep() {
+      const text = getTransmittedText();
+      if (!emitterPlaying || text.length === 0) {
+        currentStep = -1;
+        drawSplineCanvas();
+        return;
+      }
+
+      const bpm = parseInt(sliderBpm.value, 10);
+      const stepSeconds = 60 / bpm;
+      // Silencio fijo de 90 ms (en el rango de 80 a 100 ms)
+      const silenceSeconds = 0.090;
+      const noteDuration = Math.max(0.08, stepSeconds - silenceSeconds);
+
+      // Resaltar tarjeta visual
+      for (let i = 0; i < Math.min(text.length, 50); i++) {
+        const card = document.getElementById(`ribbon-card-${i}`);
+        if (card) {
+          const ch = text[i];
+          const isSpace = ch === ' ';
+          const isEnne = ch === 'Ñ';
+
+          if (i === currentStep) {
+            card.className = `px-3 py-2 rounded-xl border-2 border-white text-center font-mono min-w-[52px] shrink-0 shadow-lg scale-105 transition-all ${
+              isSpace ? 'bg-amber-600 shadow-amber-500/50' : (isEnne ? 'bg-purple-600 shadow-purple-500/50' : 'bg-indigo-600 shadow-indigo-500/50')
+            }`;
+            card.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+          } else {
+            card.className = `px-3 py-2 rounded-xl border text-center font-mono min-w-[52px] shrink-0 transition-all opacity-60 ${
+              isSpace ? 'bg-amber-950/40 border-amber-500/30' : (isEnne ? 'bg-purple-950/40 border-purple-500/30' : 'bg-slate-900 border-slate-800')
+            }`;
+          }
+        }
+      }
+
+      const ch = text[currentStep];
+      const midi = midiFromChar(ch);
+      const freq = freqFromMidi(midi);
+
+      playPureDiapasonTone(freq, noteDuration);
+      drawSplineCanvas();
+
+      currentStep = (currentStep + 1) % text.length;
+      emitterTimer = setTimeout(runEmitterStep, stepSeconds * 1000);
+    }
+
+    function stopEmitter() {
+      emitterPlaying = false;
+      if (emitterTimer) clearTimeout(emitterTimer);
+      if (activeOsc) {
+        try { activeOsc.stop(); activeOsc.disconnect(); } catch(e) {}
+        activeOsc = null;
+      }
+      currentStep = -1;
+      document.getElementById('play-icon').innerText = '▶';
+      document.getElementById('play-label').innerText = 'Transmitir';
+      btnPlaySeq.className = 'px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2 shrink-0 sm:self-center';
+      updateRibbon();
+    }
+
+    btnPlaySeq.addEventListener('click', () => {
+      if (emitterPlaying) {
+        stopEmitter();
+      } else {
+        emitterPlaying = true;
+        currentStep = 0;
+        document.getElementById('play-icon').innerText = '⏹';
+        document.getElementById('play-label').innerText = 'Detener';
+        btnPlaySeq.className = 'px-6 py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold transition-all shadow-lg shadow-red-600/20 flex items-center justify-center gap-2 shrink-0 sm:self-center';
+        runEmitterStep();
+      }
+    });
+
+    // Aislamiento total de eventos de teclado en el campo de texto (id="word-input")
+    const targetInput = document.getElementById('word-input') || document.getElementById('input-word');
+    if (targetInput) {
+      targetInput.addEventListener('keydown', (e) => {
+        if (e.key === ' ' || e.code === 'Space') {
+          e.stopPropagation(); // Evita que cualquier listener global intercepte el espacio
+        }
+      });
+      targetInput.addEventListener('keyup', (e) => {
+        if (e.key === ' ' || e.code === 'Space') {
+          e.stopPropagation();
+        }
+      });
+    }
+
+    // Atajo de teclado global: Barra espaciadora para reproducir/detener SIN bloquear campos de entrada
+    window.addEventListener('keydown', (e) => {
+      const target = e.target;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable || target.id === 'word-input' || target.id === 'input-word')) {
+        return; // Permite el comportamiento nativo del teclado para escribir espacios
+      }
+
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        btnPlaySeq.click();
+      }
+    });
+  </script>
+</body>
+</html>
