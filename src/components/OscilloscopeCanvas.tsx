@@ -1,12 +1,13 @@
 import React, { useRef, useEffect } from 'react';
-import { Waves, Radio } from 'lucide-react';
+import { Waves, Radio, Camera } from 'lucide-react';
 
 interface OscilloscopeCanvasProps {
   analyser: AnalyserNode | null;
   isPlaying: boolean;
+  onCapturePoster?: () => void;
 }
 
-export const OscilloscopeCanvas: React.FC<OscilloscopeCanvasProps> = ({ analyser, isPlaying }) => {
+export const OscilloscopeCanvas: React.FC<OscilloscopeCanvasProps> = ({ analyser, isPlaying, onCapturePoster }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animFrameId = useRef<number | null>(null);
 
@@ -130,6 +131,19 @@ export const OscilloscopeCanvas: React.FC<OscilloscopeCanvasProps> = ({ analyser
         <span>Web Audio API AnalyserNode (1024 FFT)</span>
         <span>Dominio Temporal (Time-Domain)</span>
       </div>
+
+      {onCapturePoster && (
+        <button
+          id="btn-capture-signature-poster"
+          type="button"
+          onClick={onCapturePoster}
+          className="mt-2.5 w-full h-10 sm:h-11 px-4 rounded-xl bg-gradient-to-r from-indigo-950/90 via-slate-900 to-indigo-950/90 border border-indigo-500/35 hover:border-cyan-400 hover:shadow-[0_0_16px_rgba(34,211,238,0.25)] text-cyan-200 hover:text-white font-semibold text-xs sm:text-sm font-['Plus_Jakarta_Sans',sans-serif] flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.98] z-10"
+          title="Capturar y descargar ficha PNG con la gráfica y el oscilograma en tiempo real"
+        >
+          <Camera className="w-4 h-4 text-cyan-400 shrink-0" />
+          <span>📸 Capturar Firma y Oscilograma</span>
+        </button>
+      )}
     </div>
   );
 };

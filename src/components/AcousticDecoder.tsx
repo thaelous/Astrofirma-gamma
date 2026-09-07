@@ -142,9 +142,10 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
       return { freq: null, rms, clarity: 0 };
     }
 
-    // 2. Rango de desfases (lags) para notas válidas ASCII/MIDI (150 Hz a 1400 Hz)
+    // 2. Rango de desfases (lags) para notas válidas ASCII/MIDI (110 Hz a 1400 Hz)
+    // Permite MIDI 48 (Espacio C3 = 130.81 Hz) hasta MIDI 91 (Ñ D#6 = 1244.51 Hz)
     const minLag = Math.floor(sampleRate / 1400);
-    const maxLag = Math.ceil(sampleRate / 150);
+    const maxLag = Math.ceil(sampleRate / 110);
 
     if (maxLag >= bufferLength) {
       return { freq: null, rms, clarity: 0 };
@@ -169,48 +170,35 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
       corrValues[lag] = rLag / r0;
     }
 
-    // 3. Buscar el PRIMER pico fuerte en el dominio del tiempo (fundamental pura)
-    let bestLag = -1;
-    let bestCorr = 0;
-    let hasDropped = false;
-
-    // Detectar caída desde correlación inicial y captar el primer pico local fuerte
+    // 3. Resolución Anti-Armónica (Evita confusión 'C' 392 Hz vs 'O' 784 Hz):
+    // Hallar primero la máxima correlación en toda la banda
+    let maxCorr = 0;
     for (let lag = minLag + 1; lag < maxLag; lag++) {
       const c = corrValues[lag];
-      const prevC = corrValues[lag - 1];
-      const nextC = corrValues[lag + 1];
-
-      if (c < 0.60) {
-        hasDropped = true;
+      if (c > corrValues[lag - 1] && c >= corrValues[lag + 1] && c > maxCorr) {
+        maxCorr = c;
       }
+    }
 
-      // Primer pico local significativo tras el descenso (umbral fuerte >= 0.65)
-      if (hasDropped && c > prevC && c >= nextC && c >= 0.65) {
+    if (maxCorr < 0.52) {
+      return { freq: null, rms, clarity: maxCorr };
+    }
+
+    // El periodo fundamental corresponde al PRIMER pico local que alcance al menos el 82% de maxCorr
+    // Esto asegura que la frecuencia fundamental (lag mayor T0) no sea reemplazada por el segundo armónico 2x (lag menor T0/2)
+    let bestLag = -1;
+    let bestCorr = 0;
+    for (let lag = minLag + 1; lag < maxLag; lag++) {
+      const c = corrValues[lag];
+      if (c > corrValues[lag - 1] && c >= corrValues[lag + 1] && c >= 0.82 * maxCorr && c >= 0.52) {
         bestLag = lag;
         bestCorr = c;
-        break; // Detener en el PRIMER pico fuerte para evitar saltos de octava o falsos dobles
+        break;
       }
     }
 
-    // Respaldo para señales más tenues en el aire (>= 0.52)
     if (bestLag <= 0) {
-      let dropped = false;
-      for (let lag = minLag + 1; lag < maxLag; lag++) {
-        const c = corrValues[lag];
-        const prevC = corrValues[lag - 1];
-        const nextC = corrValues[lag + 1];
-
-        if (c < 0.50) dropped = true;
-        if (dropped && c > prevC && c >= nextC && c >= 0.52) {
-          bestLag = lag;
-          bestCorr = c;
-          break;
-        }
-      }
-    }
-
-    if (bestLag <= 0 || bestCorr < 0.52) {
-      return { freq: null, rms, clarity: bestCorr };
+      return { freq: null, rms, clarity: maxCorr };
     }
 
     // 4. Interpolación parabólica para afinación continua sub-muestra
@@ -226,8 +214,8 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
     const refinedLag = bestLag + delta;
     const fundamentalFreq = sampleRate / refinedLag;
 
-    // Validar dentro del rango exacto 150 Hz - 1400 Hz
-    if (fundamentalFreq < 150 || fundamentalFreq > 1400) {
+    // Validar dentro del rango exacto 110 Hz - 1400 Hz
+    if (fundamentalFreq < 110 || fundamentalFreq > 1400) {
       return { freq: null, rms, clarity: 0 };
     }
 
@@ -333,22 +321,14 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
           setLiveRms(rms);
         }
 
-        // Máquina de estados del Gate de Silencio
+        // Máquina de estados del Gate de Silencio Estricto
+        // Estado 1 (SILENCIO / ESPERA): El RMS debe caer por debajo de 0.02 antes de aceptar cualquier nueva letra
         if (tracking.gateState === 'ESPERA_SILENCIO') {
-          // Tras confirmar una letra, esperar caída de volumen (45-50 ms continuos de silencio)
-          // para poder registrar limpiamente notas repetidas consecutivas (ej. los 3 espacios de remate)
-          if (rms < noiseThreshold || !freq) {
-            if (tracking.silenceGateStartTime === 0) {
-              tracking.silenceGateStartTime = now;
-            } else if (now - tracking.silenceGateStartTime >= 45) {
-              // Silencio de 45 ms confirmado: receptor desbloqueado para la siguiente nota
-              tracking.gateState = 'ESPERA_NOTA';
-              tracking.candidateMidi = null;
-              tracking.consecutiveFrames = 0;
-              tracking.silenceGateStartTime = 0;
-            }
-          } else {
-            // El tono anterior aún resuena en el aire/micrófono
+          if (rms < 0.02) {
+            // Caída de volumen confirmada por debajo de 0.02: se desbloquea para la siguiente letra
+            tracking.gateState = 'ESPERA_NOTA';
+            tracking.candidateMidi = null;
+            tracking.consecutiveFrames = 0;
             tracking.silenceGateStartTime = 0;
           }
 
@@ -356,8 +336,8 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
             setLiveFreq(freq || null);
           }
         } else {
-          // Estados ESPERA_NOTA o CONFIRMANDO_NOTA
-          if (freq && freq >= 150 && freq <= 1400) {
+          // Estado 2 (TONO VÁLIDO): El RMS debe superar 0.04 y nota estable durante al menos 4 cuadros consecutivos (~70-90 ms)
+          if (rms > 0.04 && freq && freq >= 110 && freq <= 1400) {
             tracking.silenceStartTime = null;
 
             // 3. Cuantización y Calibración MIDI Precisa:
@@ -366,15 +346,16 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
             const deviation = Math.abs(exactMidi - midiValue); // semitonos
 
             // Filtro de Rango Válido Estricto:
-            // A-Z (65-90), a-z (97-122), Espacio dedicado (60 / C4 o 32), Ñ dedicada (91 o 92), Dígitos (48-57)
+            // Espacio (48 / C3, 60 / 32), A-Z (65-90), a-z (97-122), Ñ dedicada (91 o 92), Dígitos (49-58)
             const isValidRange =
-              (midiValue >= 65 && midiValue <= 90) ||
-              (midiValue >= 97 && midiValue <= 122) ||
+              midiValue === 48 ||
               midiValue === 60 ||
               midiValue === 32 ||
+              (midiValue >= 65 && midiValue <= 90) ||
+              (midiValue >= 97 && midiValue <= 122) ||
               midiValue === 91 ||
               midiValue === 92 ||
-              (midiValue >= 48 && midiValue <= 57);
+              (midiValue >= 49 && midiValue <= 58);
 
             // Descartar si desviación > 0.45 semitonos o fuera de rango
             if (deviation <= 0.45 && isValidRange) {
@@ -390,14 +371,15 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
                 tracking.consecutiveFrames++;
                 tracking.gateState = 'CONFIRMANDO_NOTA';
 
-                // Exige al menos 3 cuadros consecutivos estables
-                if (tracking.consecutiveFrames >= 3) {
+                // Exige al menos 4 cuadros consecutivos estables (~70-90 ms)
+                if (tracking.consecutiveFrames >= 4) {
                   tracking.lastRegisteredMidi = midiValue;
                   tracking.lastRegisteredTime = now;
                   tracking.hasLettersSinceStart = true;
                   handleRegisterLetter(midiValue, freq, centsOff);
 
-                  // Pasar a ESPERA_SILENCIO para bloquear duplicados y notas intermedias
+                  // Regla 3: Pasar inmediatamente a requerir Estado 1 (SILENCIO, RMS < 0.02)
+                  // para impedir duplicaciones de letras "OO" y asegurar separación nítida
                   tracking.gateState = 'ESPERA_SILENCIO';
                   tracking.silenceGateStartTime = 0;
                   tracking.consecutiveFrames = 0;
@@ -415,8 +397,8 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
               tracking.consecutiveFrames = 0;
               tracking.gateState = 'ESPERA_NOTA';
             }
-          } else {
-            // Silencio
+          } else if (rms < 0.02) {
+            // Silencio inter-pulsos confirmado
             tracking.candidateMidi = null;
             tracking.consecutiveFrames = 0;
             tracking.gateState = 'ESPERA_NOTA';
@@ -566,10 +548,10 @@ export const AcousticDecoder: React.FC<AcousticDecoderProps> = ({ onSendToEmitte
       micFilter.type = 'lowpass';
       micFilter.frequency.value = 1600;
 
-      // Filtro pasa-altos suave a 120 Hz para eliminar rumble/vibraciones mecánicas de mesa
+      // Filtro pasa-altos suave a 90 Hz para admitir limpio el espacio C3 (130.8 Hz) y cortar rumble infrasónico
       const highpass = audioCtx.createBiquadFilter();
       highpass.type = 'highpass';
-      highpass.frequency.value = 120;
+      highpass.frequency.value = 90;
 
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 2048; // Buffer exacto de 2048 para autocorrelación

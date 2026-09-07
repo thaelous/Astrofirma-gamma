@@ -21,28 +21,44 @@ export function midiToFrequency(midi: number): number {
 }
 
 /**
+ * Normalizes characters to standard Latin uppercase while preserving Ñ
+ */
+export function normalizeChar(char: string): string {
+  if (char === 'Ñ' || char === 'ñ') return 'Ñ';
+  if (char === 'á' || char === 'Á') return 'A';
+  if (char === 'é' || char === 'É') return 'E';
+  if (char === 'í' || char === 'Í') return 'I';
+  if (char === 'ó' || char === 'Ó') return 'O';
+  if (char === 'ú' || char === 'Ú' || char === 'ü' || char === 'Ü') return 'U';
+  return char.toUpperCase();
+}
+
+/**
  * Resolves a character to its calibrated acoustic MIDI note.
- * Space (' ') -> MIDI 60 (C4 = 261.6 Hz, solid fundamental on all speakers)
+ * Space (' ') -> MIDI 48 (C3 = 130.81 Hz, distinct low fundamental)
  * 'Ñ' / 'ñ' -> MIDI 91 (D#6 = 1244.5 Hz, dedicated note within the 1600 Hz filter)
  * 'A'-'Z' -> MIDI 65-90 (349 Hz - 1175 Hz)
- * '0'-'9' -> MIDI 48-57 (130 Hz - 220 Hz)
+ * '0'-'9' -> MIDI 49-57 (138 Hz - 220 Hz)
  */
 export function getAsciiCode(char: string): number {
   if (char === ' ') {
-    return 60; // Dedicated base note C4
+    return 48; // Dedicated base note C3 (130.81 Hz)
   }
   if (char === 'Ñ' || char === 'ñ') {
-    return 91; // Dedicated note D#6
+    return 91; // Dedicated note D#6 (1244.51 Hz)
   }
 
-  const upper = char.toUpperCase();
-  const code = upper.charCodeAt(0);
+  const norm = normalizeChar(char);
+  const code = norm.charCodeAt(0);
 
   if (code >= 65 && code <= 90) {
     return code; // A-Z (MIDI 65-90)
   }
-  if (code >= 48 && code <= 57) {
-    return code; // 0-9 (MIDI 48-57)
+  if (code >= 49 && code <= 57) {
+    return code; // 1-9 (MIDI 49-57)
+  }
+  if (code === 48) {
+    return 58; // Mapeo para '0' para no colisionar con el espacio C3 (MIDI 48)
   }
 
   // Fallback for special characters
@@ -50,18 +66,21 @@ export function getAsciiCode(char: string): number {
     return char.charCodeAt(0);
   }
 
-  return 60;
+  return 48;
 }
 
 /**
  * Converts MIDI note to its decoded character using the unified acoustic map
  */
 export function acousticMidiToChar(midi: number): string {
-  if (midi === 60 || midi === 32) {
+  if (midi === 48 || midi === 60 || midi === 32) {
     return ' ';
   }
   if (midi === 91 || midi === 92) {
     return 'Ñ';
+  }
+  if (midi === 58) {
+    return '0';
   }
   if (midi >= 65 && midi <= 90) {
     return String.fromCharCode(midi);
@@ -69,7 +88,7 @@ export function acousticMidiToChar(midi: number): string {
   if (midi >= 97 && midi <= 122) {
     return String.fromCharCode(midi).toUpperCase();
   }
-  if (midi >= 48 && midi <= 57) {
+  if (midi >= 49 && midi <= 57) {
     return String.fromCharCode(midi);
   }
   return String.fromCharCode(midi);

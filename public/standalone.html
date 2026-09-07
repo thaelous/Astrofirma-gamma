@@ -264,49 +264,56 @@
 
     // Mapeo Acústico Estandarizado Bidireccional
     function midiFromChar(char) {
-      if (char === ' ') return 60; // Espacio dedicado C4 (~261.63 Hz, limpio y audible)
+      if (char === ' ') return 48; // Espacio dedicado C3 (~130.81 Hz, inequívoco)
       if (char === 'Ñ' || char === 'ñ') return 91; // Ñ dedicada D#6 (~1244.51 Hz, en banda segura)
+      if (char === 'á' || char === 'Á') return 65; // A
+      if (char === 'é' || char === 'É') return 69; // E
+      if (char === 'í' || char === 'Í') return 73; // I
+      if (char === 'ó' || char === 'Ó') return 79; // O
+      if (char === 'ú' || char === 'Ú' || char === 'ü' || char === 'Ü') return 85; // U
       const code = char.toUpperCase().charCodeAt(0);
       if (code >= 65 && code <= 90) return code; // A-Z (MIDI 65-90)
-      if (code >= 48 && code <= 57) return code; // 0-9 (MIDI 48-57)
-      return 60;
+      if (code >= 49 && code <= 57) return code; // 1-9 (MIDI 49-57)
+      if (code === 48) return 58; // '0' -> 58
+      return 48;
     }
 
     function charFromMidi(midi) {
-      if (midi === 60 || midi === 32) return ' ';
+      if (midi === 48 || midi === 60 || midi === 32) return ' ';
       if (midi === 91 || midi === 92) return 'Ñ';
+      if (midi === 58) return '0';
       if (midi >= 65 && midi <= 90) return String.fromCharCode(midi);
-      if (midi >= 48 && midi <= 57) return String.fromCharCode(midi);
+      if (midi >= 49 && midi <= 57) return String.fromCharCode(midi);
       return String.fromCharCode(midi);
     }
 
     function isValidAppMidi(midi) {
-      return (midi >= 65 && midi <= 90) ||
-             (midi >= 97 && midi <= 122) ||
+      return midi === 48 ||
              midi === 60 ||
              midi === 32 ||
+             (midi >= 65 && midi <= 90) ||
              midi === 91 ||
              midi === 92 ||
-             (midi >= 48 && midi <= 57);
+             midi === 58 ||
+             (midi >= 49 && midi <= 57);
     }
 
-    // Tracking state con máquina de estados del Gate de Silencio
+    // Tracking state con máquina de estados del Gate de Silencio Estricto
     const tracking = {
       gateState: 'ESPERA_NOTA', // 'ESPERA_NOTA' | 'CONFIRMANDO_NOTA' | 'ESPERA_SILENCIO'
       candidateMidi: null,
       candidateFreq: 0,
       consecutiveFrames: 0,
       silenceStartTime: 0,
-      silenceRequiredMs: 50,   // Exige 50 ms continuos de silencio (en rango 40-60 ms) para desbloquear notas repetidas
-      noiseThreshold: 0.022    // Umbral de volumen RMS
+      silenceThreshold: 0.02,  // Estado 1 (SILENCIO): RMS < 0.02
+      signalThreshold: 0.04    // Estado 2 (TONO VÁLIDO): RMS > 0.04
     };
 
     /**
      * 2. Algoritmo de Autocorrelación Normalizada Robusto
-     * Busca el PRIMER pico fuerte en el dominio del tiempo (evitando saltos de octava o falsos dobles).
-     * Búfer de 2048 y lags entre 150 Hz y 1400 Hz.
+     * Búfer de 2048 y lags entre 110 Hz y 1400 Hz (cubre espacio en C3 / 130.8 Hz hasta 1400 Hz).
      */
-    function detectPitch(buffer, sampleRate, threshold = 0.020) {
+    function detectPitch(buffer, sampleRate, threshold = 0.040) {
       const bufferLength = buffer.length; // 2048
 
       // RMS
@@ -320,7 +327,7 @@
       }
 
       const minLag = Math.floor(sampleRate / 1400);
-      const maxLag = Math.ceil(sampleRate / 150);
+      const maxLag = Math.ceil(sampleRate / 110);
       if (maxLag >= bufferLength) return { freq: null, rms, clarity: 0 };
 
       const windowLength = bufferLength - maxLag;
@@ -389,7 +396,7 @@
       const refinedLag = bestLag + delta;
       const fundamentalFreq = sampleRate / refinedLag;
 
-      if (fundamentalFreq < 150 || fundamentalFreq > 1400) {
+      if (fundamentalFreq < 110 || fundamentalFreq > 1400) {
         return { freq: null, rms, clarity: 0 };
       }
 
@@ -439,21 +446,14 @@
         recAnalyser.getFloatTimeDomainData(buffer);
         const now = performance.now();
 
-        const { freq, rms, clarity } = detectPitch(buffer, recAudioCtx.sampleRate, tracking.noiseThreshold);
+        const { freq, rms, clarity } = detectPitch(buffer, recAudioCtx.sampleRate, 0.02);
 
+        // Estado 1 (SILENCIO / ESPERA): El RMS debe caer por debajo de 0.02 antes de aceptar cualquier nueva letra
         if (tracking.gateState === 'ESPERA_SILENCIO') {
-          // Tras confirmar una letra, BLOQUEO total hasta que el volumen caiga por debajo del umbral por 40 ms
-          if (rms < tracking.noiseThreshold || !freq) {
-            if (tracking.silenceStartTime === 0) {
-              tracking.silenceStartTime = now;
-            } else if (now - tracking.silenceStartTime >= tracking.silenceRequiredMs) {
-              // Silencio de 40 ms confirmado: listo para la siguiente nota
-              tracking.gateState = 'ESPERA_NOTA';
-              tracking.candidateMidi = null;
-              tracking.consecutiveFrames = 0;
-              tracking.silenceStartTime = 0;
-            }
-          } else {
+          if (rms < 0.02) {
+            tracking.gateState = 'ESPERA_NOTA';
+            tracking.candidateMidi = null;
+            tracking.consecutiveFrames = 0;
             tracking.silenceStartTime = 0;
           }
 
@@ -461,10 +461,8 @@
             metricFreq.innerText = freq ? `${freq.toFixed(1)} Hz` : '--- Hz';
           }
         } else {
-          // Estados ESPERA_NOTA o CONFIRMANDO_NOTA
-          if (freq && freq >= 150 && freq <= 1400 && clarity >= 0.55) {
-            tracking.silenceStartTime = 0;
-
+          // Estado 2 (TONO VÁLIDO): Cuando el RMS supere 0.04 y nota estable durante al menos 4 cuadros consecutivos (~70-90 ms)
+          if (rms > 0.04 && freq && freq >= 110 && freq <= 1400) {
             const exactMidi = 69 + 12 * Math.log2(freq / 440);
             const midiValue = Math.round(exactMidi);
             const deviation = Math.abs(exactMidi - midiValue);
@@ -483,9 +481,10 @@
                 tracking.consecutiveFrames++;
                 tracking.gateState = 'CONFIRMANDO_NOTA';
 
-                // Exigir al menos 3 cuadros consecutivos estables
-                if (tracking.consecutiveFrames >= 3) {
+                // Exigir al menos 4 cuadros consecutivos estables (~70-90 ms)
+                if (tracking.consecutiveFrames >= 4) {
                   registerLetter(midiValue, freq, centsOff);
+                  // En cuanto se confirme, pasa INMEDIATAMENTE a requerir Estado 1 (SILENCIO, RMS < 0.02)
                   tracking.gateState = 'ESPERA_SILENCIO';
                   tracking.silenceStartTime = 0;
                   tracking.consecutiveFrames = 0;
@@ -502,7 +501,7 @@
               tracking.consecutiveFrames = 0;
               tracking.gateState = 'ESPERA_NOTA';
             }
-          } else {
+          } else if (rms < 0.02) {
             tracking.candidateMidi = null;
             tracking.consecutiveFrames = 0;
             tracking.gateState = 'ESPERA_NOTA';
@@ -563,10 +562,10 @@
         micFilter.type = 'lowpass';
         micFilter.frequency.value = 1600;
 
-        // Pasa-altos suave a 120 Hz
+        // Pasa-altos suave a 90 Hz (permite C3 a 130.8 Hz)
         const highpass = recAudioCtx.createBiquadFilter();
         highpass.type = 'highpass';
-        highpass.frequency.value = 120;
+        highpass.frequency.value = 90;
 
         const analyser = recAudioCtx.createAnalyser();
         analyser.fftSize = 2048; // Buffer de 2048
@@ -882,10 +881,12 @@
     });
 
     /**
-     * Emisión Limpia y Estandarizada
-     * Onda senoidal pura ('sine'), sin efectos, corte suave sin clics
+     * Protocolo de Emisión por Pulsos Estrictos (Tone + Silence):
+     * Cada letra dura exactamente 180 ms de tono senoidal puro ('sine').
+     * Inmediatamente después: 100 ms de silencio obligatorio (amplitud = 0).
+     * Ataque y decaimiento suaves (5 ms de rampa linearRampToValueAtTime) para evitar clics ("pop").
      */
-    function playPureDiapasonTone(frequency, duration) {
+    function playPureDiapasonTone(frequency) {
       if (!emitterCtx) {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         emitterCtx = new AudioCtx();
@@ -899,20 +900,20 @@
       osc.type = 'sine';
       osc.frequency.setValueAtTime(frequency, now);
 
-      const attack = 0.008;
-      const release = 0.012;
-      const sustain = Math.max(0.04, duration - release);
+      const attack = 0.005;   // 5 ms rampa de ataque suave
+      const decay = 0.005;    // 5 ms rampa de decaimiento suave
+      const toneDuration = 0.180; // 180 ms exactos de tono
 
-      gain.gain.setValueAtTime(0, now);
+      gain.gain.setValueAtTime(0.0001, now);
       gain.gain.linearRampToValueAtTime(0.85, now + attack);
-      gain.gain.setValueAtTime(0.85, now + sustain);
-      gain.gain.linearRampToValueAtTime(0.0001, now + duration);
+      gain.gain.setValueAtTime(0.85, now + toneDuration - decay);
+      gain.gain.linearRampToValueAtTime(0.0001, now + toneDuration);
 
       osc.connect(gain);
       gain.connect(emitterCtx.destination);
 
       osc.start(now);
-      osc.stop(now + duration + 0.01);
+      osc.stop(now + toneDuration + 0.001);
       activeOsc = osc;
     }
 
@@ -924,11 +925,16 @@
         return;
       }
 
-      const bpm = parseInt(sliderBpm.value, 10);
-      const stepSeconds = 60 / bpm;
-      // Silencio fijo de 90 ms (en el rango de 80 a 100 ms)
-      const silenceSeconds = 0.090;
-      const noteDuration = Math.max(0.08, stepSeconds - silenceSeconds);
+      // Regla 1: Desactivar el Loop en el Emisor durante la Transmisión
+      // Al terminar de sonar la última nota (más los 3 espacios de cierre),
+      // la reproducción se detiene AUTOMÁTICAMENTE.
+      if (currentStep >= text.length) {
+        stopEmitter();
+        return;
+      }
+
+      // Protocolo Estricto: 180 ms de tono + 100 ms de silencio = 280 ms por ciclo
+      const cycleMs = 280;
 
       // Resaltar tarjeta visual
       for (let i = 0; i < Math.min(text.length, 50); i++) {
@@ -955,11 +961,18 @@
       const midi = midiFromChar(ch);
       const freq = freqFromMidi(midi);
 
-      playPureDiapasonTone(freq, noteDuration);
+      playPureDiapasonTone(freq);
       drawSplineCanvas();
 
-      currentStep = (currentStep + 1) % text.length;
-      emitterTimer = setTimeout(runEmitterStep, stepSeconds * 1000);
+      currentStep++;
+      if (currentStep < text.length) {
+        emitterTimer = setTimeout(runEmitterStep, cycleMs);
+      } else {
+        // Al terminar el último pulso de 180ms + 100ms de silencio, detener automáticamente
+        emitterTimer = setTimeout(() => {
+          stopEmitter();
+        }, cycleMs);
+      }
     }
 
     function stopEmitter() {

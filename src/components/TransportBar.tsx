@@ -1,16 +1,18 @@
 import React from 'react';
-import { Play, Pause, Square, AudioWaveform, Sliders } from 'lucide-react';
+import { Play, Pause, Square, Repeat, AudioWaveform, Sliders } from 'lucide-react';
 import { AudioSettings, SynthMode } from '../types';
 
 interface TransportBarProps {
   settings: AudioSettings;
   isPlaying: boolean;
   isPaused: boolean;
+  isLooping: boolean;
   activeStep: number;
   totalSteps: number;
   onPlay: () => void;
   onPause: () => void;
   onStop: () => void;
+  onToggleLoop: () => void;
   onModeChange: (mode: SynthMode) => void;
   onOpenSettings: () => void;
 }
@@ -19,11 +21,13 @@ export const TransportBar: React.FC<TransportBarProps> = ({
   settings,
   isPlaying,
   isPaused,
+  isLooping,
   activeStep,
   totalSteps,
   onPlay,
   onPause,
   onStop,
+  onToggleLoop,
   onModeChange,
   onOpenSettings,
 }) => {
@@ -36,7 +40,7 @@ export const TransportBar: React.FC<TransportBarProps> = ({
         {/* Playback Controls & Status */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3 w-full md:w-auto">
           {/* Main Action Buttons Grid on Mobile */}
-          <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
+          <div className="grid grid-cols-3 sm:flex sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
             {/* Main Play / Pause Button */}
             {!isPlaying ? (
               <button
@@ -70,6 +74,22 @@ export const TransportBar: React.FC<TransportBarProps> = ({
             >
               <Square className="w-3.5 sm:w-4 h-3.5 sm:h-4 fill-current text-rose-400 shrink-0" />
               <span>Detener</span>
+            </button>
+
+            {/* Loop Toggle Button */}
+            <button
+              id="main-loop-button"
+              type="button"
+              onClick={onToggleLoop}
+              className={`h-11 sm:h-12 px-3 sm:px-4 rounded-xl font-medium text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-[0.98] ${
+                isLooping
+                  ? 'bg-cyan-950/60 border border-cyan-400 text-cyan-300 shadow-[0_0_14px_rgba(34,211,238,0.35)] font-semibold'
+                  : 'bg-[#0a0f30] border border-indigo-500/30 text-slate-400 hover:text-slate-200 hover:border-indigo-400/50'
+              }`}
+              title={isLooping ? 'Desactivar bucle continuo' : 'Activar bucle continuo (Loop)'}
+            >
+              <Repeat className={`w-3.5 sm:w-4 h-3.5 sm:h-4 shrink-0 transition-transform ${isLooping ? 'text-cyan-400 rotate-180' : 'text-slate-400'}`} />
+              <span>{isLooping ? 'Loop Activado' : 'Loop'}</span>
             </button>
           </div>
 

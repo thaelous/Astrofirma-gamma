@@ -32,6 +32,7 @@ export class AudioEngine {
   // State
   private isPlaying = false;
   private isPaused = false;
+  private isLooping = false;
   private currentStep = 0;
   private timerId: number | null = null;
   private currentPoints: LetterPoint[] = [];
@@ -298,7 +299,7 @@ export class AudioEngine {
     this.activeVoices.clear();
   }
 
-  // --- Melodic Mode (Emisión Limpia y Estandarizada) ---
+  // --- Melodic Mode (Emisión Limpia y Estandarizada por Pulsos Estrictos) ---
   private startMelodicSequencer() {
     this.clearAllTimers();
     this.runSequencerStep();
@@ -310,32 +311,58 @@ export class AudioEngine {
     const N = this.currentPoints.length;
     const point = this.currentPoints[this.currentStep];
 
-    const stepSeconds = 60 / this.settings.bpm;
-    // Silencio estandarizado de 90 ms entre notas (rango 80-100 ms) para distinguir fin e inicio de letra por gate
-    const silenceSeconds = 0.090;
-    const noteDuration = Math.max(0.08, stepSeconds - silenceSeconds);
+    // Protocolo Estricto de Transmisión:
+    // 180 ms de tono senoidal puro + 100 ms de silencio obligatorio (total 280 ms por pulso)
+    const noteDuration = 0.180;
+    const stepDurationMs = 280;
 
     // Trigger pure sine tone (diapasón sin reverb ni delay)
     const shiftedMidi = point.midiNote + this.settings.pitchShift;
     const freq = midiToFrequency(shiftedMidi);
     this.playTone(freq, noteDuration);
 
-    const progress = (this.currentStep + 0.5) / N;
+    const progress = (this.currentStep + 1) / N;
     if (this.onStepChange) {
       this.onStepChange(this.currentStep, progress);
     }
 
-    this.currentStep = (this.currentStep + 1) % N;
-    this.timerId = window.setTimeout(this.runSequencerStep, stepSeconds * 1000);
+    // Control de Bucle (Loop):
+    // Si isLooping está activo, al sonar la última nota (incluyendo los 3 espacios de remate),
+    // reinicia inmediatamente la secuencia desde la primera letra sin detenerse.
+    // Si está inactivo, se detiene automáticamente al llegar al final.
+    if (this.currentStep >= N - 1) {
+      if (this.isLooping) {
+        this.timerId = window.setTimeout(() => {
+          if (!this.isPlaying) return;
+          this.currentStep = 0;
+          this.runSequencerStep();
+        }, stepDurationMs);
+      } else {
+        this.timerId = window.setTimeout(() => {
+          this.stop();
+        }, stepDurationMs);
+      }
+      return;
+    }
+
+    this.currentStep++;
+    this.timerId = window.setTimeout(this.runSequencerStep, stepDurationMs);
   };
+
+  public getLoop(): boolean {
+    return this.isLooping;
+  }
+
+  public setLoop(loop: boolean): void {
+    this.isLooping = loop;
+  }
 
   /**
    * Emisión limpia y estandarizada:
-   * En el modo de transmisión/melodía, fuerza el uso de onda senoidal pura ('sine')
-   * con 0% de reverb y 0% de delay de forma automática (conexión directa a masterGain),
-   * garantizando que el altavoz envíe tonos puros de diapasón fáciles de leer por el aire.
+   * Onda senoidal pura ('sine') de exactamente 180 ms, con rampa suave de ataque/decaimiento de 5 ms
+   * para prevenir cualquier chasquido ("pop") acústico y evitar distorsión armónica.
    */
-  public playTone(frequency: number, duration: number = 0.35) {
+  public playTone(frequency: number, duration: number = 0.180) {
     if (!this.ctx || !this.masterGain) return;
     const ctx = this.ctx;
     const now = ctx.currentTime;
@@ -347,22 +374,24 @@ export class AudioEngine {
     osc.type = 'sine';
     osc.frequency.setValueAtTime(frequency, now);
 
-    // Envolvente rápida y suave para evitar clics acústicos
-    const attack = 0.008; // 8 ms
-    const release = 0.012; // 12 ms
-    const sustainTime = Math.max(0.05, duration - release);
+    // Envolvente rápida y suave de 5 ms para evitar clics acústicos
+    const attack = 0.005; // 5 ms
+    const decay = 0.005;  // 5 ms
+    const sustainTime = Math.max(0.04, duration - decay);
+    const peakGain = 0.65; // Amplitud limpia
 
-    noteGain.gain.setValueAtTime(0, now);
-    noteGain.gain.linearRampToValueAtTime(0.85, now + attack);
-    noteGain.gain.setValueAtTime(0.85, now + sustainTime);
+    noteGain.gain.setValueAtTime(0.0001, now);
+    noteGain.gain.linearRampToValueAtTime(peakGain, now + attack);
+    noteGain.gain.setValueAtTime(peakGain, now + sustainTime);
     noteGain.gain.linearRampToValueAtTime(0.0001, now + duration);
+    noteGain.gain.setValueAtTime(0, now + duration);
 
     // Conexión DIRECTA a masterGain (0% delay, 0% reverb)
     osc.connect(noteGain);
     noteGain.connect(this.masterGain);
 
     osc.start(now);
-    const stopTime = now + duration + 0.01;
+    const stopTime = now + duration + 0.002;
     osc.stop(stopTime);
 
     const voiceEntry = { osc, gain: noteGain };

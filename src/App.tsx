@@ -15,6 +15,7 @@ import { MathGuideModal } from './components/MathGuideModal';
 import { ExportAudioModal } from './components/ExportAudioModal';
 import { SplashScreen } from './components/SplashScreen';
 import { AcousticDecoder } from './components/AcousticDecoder';
+import { exportSignaturePoster } from './utils/posterExport';
 import { LayoutGrid, LineChart, Waves, Flame } from 'lucide-react';
 
 const INITIAL_SETTINGS: AudioSettings = {
@@ -44,6 +45,7 @@ export default function App() {
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [isLooping, setIsLooping] = useState(false);
   const [activeStep, setActiveStep] = useState(-1);
   const [audioProgress, setAudioProgress] = useState(0);
 
@@ -56,6 +58,11 @@ export default function App() {
   // Compute letter data points
   const points: LetterPoint[] = useMemo(() => {
     return parseWordToPoints(word);
+  }, [word]);
+
+  // Points with 3 closing spaces for acoustic transmission protocol
+  const transmissionPoints: LetterPoint[] = useMemo(() => {
+    return parseWordToPoints(word, true);
   }, [word]);
 
   // Audio Engine instance
@@ -90,7 +97,7 @@ export default function App() {
     setWord(cleaned);
     setGenerationCount((c) => c + 1);
     if (engineRef.current && isPlaying) {
-      const newPoints = parseWordToPoints(cleaned);
+      const newPoints = parseWordToPoints(cleaned, true);
       engineRef.current.playSequence(newPoints);
     }
   };
@@ -98,12 +105,25 @@ export default function App() {
   const handlePlay = async () => {
     if (engineRef.current) {
       await engineRef.current.init();
+      engineRef.current.setLoop(isLooping);
       if (settings.mode === 'melodic') {
-        engineRef.current.playSequence(points);
+        engineRef.current.playSequence(transmissionPoints);
       } else {
         engineRef.current.playTimbralDrone(points);
       }
     }
+  };
+
+  const handleToggleLoop = () => {
+    const next = !isLooping;
+    setIsLooping(next);
+    if (engineRef.current) {
+      engineRef.current.setLoop(next);
+    }
+  };
+
+  const handleCapturePoster = () => {
+    exportSignaturePoster(word, points, mathMode);
   };
 
   const handlePause = () => {
@@ -290,11 +310,12 @@ export default function App() {
                   initial={{ opacity: 0, scale: 0.985 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.35, delay: 0.05, ease: [0.22, 1, 0.36, 1] }}
-                  className="h-[260px] sm:h-[320px] lg:h-[380px]"
+                  className="h-[290px] sm:h-[350px] lg:h-[410px]"
                 >
                   <OscilloscopeCanvas
                     analyser={analyser}
                     isPlaying={isPlaying}
+                    onCapturePoster={handleCapturePoster}
                   />
                 </motion.div>
               </motion.div>
@@ -334,11 +355,12 @@ export default function App() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -8, scale: 0.99 }}
                 transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-                className="h-[320px] sm:h-[380px]"
+                className="h-[340px] sm:h-[400px]"
               >
                 <OscilloscopeCanvas
                   analyser={analyser}
                   isPlaying={isPlaying}
+                  onCapturePoster={handleCapturePoster}
                 />
               </motion.div>
             )}
@@ -350,11 +372,13 @@ export default function App() {
           settings={settings}
           isPlaying={isPlaying}
           isPaused={isPaused}
+          isLooping={isLooping}
           activeStep={activeStep}
           totalSteps={points.length}
           onPlay={handlePlay}
           onPause={handlePause}
           onStop={handleStop}
+          onToggleLoop={handleToggleLoop}
           onModeChange={handleModeChange}
           onOpenSettings={() => setIsAudioSettingsOpen(true)}
         />
